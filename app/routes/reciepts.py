@@ -1,5 +1,5 @@
 from flask import request, jsonify, Blueprint,render_template
-from app.services.reciepts import upload_and_parse_reciept, get_parsed_reciept
+from app.services.reciepts import upload_and_parse_reciept, get_parsed_reciept,correct_parse_reciept
 from app.utils.save_reciept_image import save_receipt_image
 from app.utils.reciept_parser import reciept_parser
 
@@ -30,3 +30,19 @@ def get_parsed_reciept_route(id):
     resp = get_parsed_reciept(id)
 
     return jsonify(resp),200
+
+
+@reciepts_bp.route('/v1/reciepts/<id>',methods=['PATCH'])
+def correct_parsed_reciept_route(id):
+    # auth_header = request.headers.get('Authorization')
+    # if not auth_header or not auth_header.startswith('Bearer '):
+    #     return jsonify({"error": "Unauthorized"}), 401
+
+    # token = auth_header.split(" ")[1]  # Extract the token
+    token = "mirha"
+    fixes = request.get_json()
+
+    resp,code = correct_parse_reciept(token,id,fixes)
+
+
+    return jsonify(resp),code
