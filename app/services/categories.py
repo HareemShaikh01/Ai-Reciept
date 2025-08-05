@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 # Constants
-STORAGE_DIR = "storage/instances"
+STORAGE_DIR = "storage"
 META_FILE = "meta.json"
 
 # Ensure the storage directory exists

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 # Constants
-STORAGE_DIR = "storage/instances"
+STORAGE_DIR = "storage"
 META_FILE = "meta.json"
 
 # Ensure the storage directory exists
@@ -47,7 +47,7 @@ def create_workspace(name, token):
     meta_df.to_json(meta_path, orient="records", indent=2)
 
     # 7. Create an empty CSV file for the new instance
-    csv_path = os.path.join(STORAGE_DIR, f"{instance_id}.csv")
+    csv_path = os.path.join(STORAGE_DIR, f"instances/{instance_id}.csv")
     pd.DataFrame(columns=["date", "text", "amount", "category_id", "receipt_id"]).to_csv(csv_path, index=False)
 
     # 8. Return response
@@ -108,7 +108,7 @@ def get_workspace(instance_id, token):
     name = workspace_details.iloc[0]["name"]
 
     # Step 3: Read instance CSV
-    csv_path = os.path.join(STORAGE_DIR, f"{instance_id}.csv")
+    csv_path = os.path.join(STORAGE_DIR, f"instances/{instance_id}.csv")
     if not os.path.exists(csv_path):
         return {"error": "Workspace data file not found"}, 500
 
@@ -209,7 +209,7 @@ def delete_workspace(token, instance_id):
     meta_df.to_json(meta_path, orient="records", indent=2)
 
     # Step 5: Delete the CSV file
-    csv_path = os.path.join(STORAGE_DIR, f"{instance_id}.csv")
+    csv_path = os.path.join(STORAGE_DIR, f"instances/{instance_id}.csv")
     if os.path.exists(csv_path):
         os.remove(csv_path)
 

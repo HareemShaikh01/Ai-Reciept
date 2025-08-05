@@ -1,7 +1,7 @@
 import os
 import uuid
 
-RECEIPT_DIR = "storage/receipts"
+RECEIPT_DIR = "storage/receipts/uploads"
 os.makedirs(RECEIPT_DIR, exist_ok=True)
 
 
