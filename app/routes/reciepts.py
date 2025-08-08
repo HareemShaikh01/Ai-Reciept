@@ -11,13 +11,18 @@ def upload_and_parse_reciept_route():
     if request.method == "POST":
         file = request.files.get("reciept")
         instance_id = request.form.get("instance_id")
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer'):
+            return jsonify({'error','invalid token'}),404
+        
+        token = auth_header.split(' ')[1]
 
         if not file:
             return "No file uploaded", 400
         if not instance_id:
             return "No instance ID provided", 400
 
-        resp = upload_and_parse_reciept(instance_id,file)
+        resp = upload_and_parse_reciept(token,instance_id,file)
         
         return jsonify(resp),200
     

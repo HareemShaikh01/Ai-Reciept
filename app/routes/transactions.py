@@ -6,7 +6,7 @@ transaction_bp = Blueprint('transaction_bp',__name__)
 @transaction_bp.route('/v1/instances/<id>/transactions',methods=['GET'])
 def list_transactions_route(id):
     transaction = list_transactions(id)
-    return jsonify(transaction),400
+    return jsonify(transaction),200
 
 
 @transaction_bp.route('/v1/instances/<instance_id>/budgets', methods=['POST'])

@@ -11,7 +11,7 @@ import json
 RECIEPTS_PATH = "storage/receipts"
 RECIEPT_FILE = 'receipts.json'
 
-def upload_and_parse_reciept(instance_id, file):
+def upload_and_parse_reciept(token,instance_id, file):
     # Step 1: Save uploaded image and generate receipt_id
     receipt_id, path = save_receipt_image(file)
     img_url = path.split('\\')[1]
@@ -34,7 +34,7 @@ def upload_and_parse_reciept(instance_id, file):
 
     # Add categories via service and store their IDs
     for category_name in category_map.keys():
-        category_resp, status = add_category("mirha", instance_id, {"name": category_name})
+        category_resp, status = add_category(token,instance_id, {"name": category_name})
         if status == 200:
             category_map[category_name] = category_resp["id"]
         else:

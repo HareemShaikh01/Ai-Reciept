@@ -141,7 +141,10 @@ def update_workspace(instance_id, token, data):
     if not os.path.exists(meta_path):
         return {"error": "Metadata not found"}, 500
 
-    meta_df = pd.read_json(meta_path)
+    try:
+        meta_df = pd.read_json(meta_path)
+    except Exception as e:
+        return {"error": "Failed to load metadata", "details": str(e)}, 500
 
     # Step 2: Find the workspace
     workspace_row = meta_df[meta_df["instance_id"] == instance_id]
@@ -155,7 +158,7 @@ def update_workspace(instance_id, token, data):
         return {"error": "Forbidden"}, 403
 
     # Step 4: Reject if already archived
-    if "archived" in meta_df.columns and meta_df.at[idx, "archived"]:
+    if meta_df.get("archived", pd.Series(False)).at[idx]:
         return {"error": "Workspace is already archived"}, 400
 
     # Step 5: Patch fields
@@ -167,20 +170,24 @@ def update_workspace(instance_id, token, data):
             meta_df["archived"] = False
         meta_df.at[idx, "archived"] = data["archived"]
 
-    # ✅ Step 6: Ensure created_at is in ISO format before saving
+    # Step 6: Ensure created_at is in ISO format before saving
     if "created_at" in meta_df.columns:
         meta_df["created_at"] = pd.to_datetime(
             meta_df["created_at"], errors="coerce"
         ).dt.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
-    # Step 7: Save metadata
-    meta_df.to_json(meta_path, orient="records", indent=2)
+    # Step 7: Save updated metadata
+    try:
+        meta_df.to_json(meta_path, orient="records", indent=2)
+    except Exception as e:
+        return {"error": "Failed to save metadata", "details": str(e)}, 500
 
     # Step 8: Return updated info
     return {
         "instance_id": instance_id,
         "name": meta_df.at[idx, "name"]
     }, 200
+
 
 
 def delete_workspace(token, instance_id):

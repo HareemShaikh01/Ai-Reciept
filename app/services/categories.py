@@ -14,7 +14,6 @@ os.makedirs(STORAGE_DIR, exist_ok=True)
 def extract_user_id(token):
     return token  
 
-
 def rename_category(token, cat_id, data):
     user_id = extract_user_id(token)
 
@@ -26,20 +25,24 @@ def rename_category(token, cat_id, data):
     if not os.path.exists(meta_path) or not os.path.exists(categories_path):
         return {"error": "Metadata or category data missing"}, 500
 
-    meta_df = pd.read_json(meta_path)
-    cat_df = pd.read_csv(categories_path)
+    try:
+        meta_df = pd.read_json(meta_path)
+        cat_df = pd.read_csv(categories_path)
+    except Exception as e:
+        return {"error": "Failed to load data", "details": str(e)}, 500
 
-    # Step 1: Locate category
-    cat_row = cat_df[cat_df["id"] == int(cat_id)]
+    # Step 1: Get instance_id for this user (assuming one instance per user)
+    user_instances = meta_df[meta_df["user_id"] == user_id]
+    if user_instances.empty:
+        return {"error": "No workspace found for user"}, 404
+
+    # ⚠️ If multiple instances exist for the user, you can refine this part as needed.
+    instance_id = user_instances.iloc[0]["instance_id"]
+
+    # Step 2: Find category with matching cat_id AND instance_id
+    cat_row = cat_df[(cat_df["id"] == int(cat_id)) & (cat_df["instance_id"] == instance_id)]
     if cat_row.empty:
-        return {"error": "Category not found"}, 404
-
-    instance_id = cat_row.iloc[0]["instance_id"]
-
-    # Step 2: Verify user owns the instance
-    workspace_row = meta_df[meta_df["instance_id"] == instance_id]
-    if workspace_row.empty or workspace_row.iloc[0]["user_id"] != user_id:
-        return {"error": "Forbidden"}, 403
+        return {"error": "Category not found in this workspace"}, 404
 
     # Step 3: Validate input
     new_name = data.get("name", "").strip()
@@ -51,62 +54,65 @@ def rename_category(token, cat_id, data):
     cat_df.at[idx, "name"] = new_name
 
     # Step 5: Save back to file
-    cat_df.to_csv(categories_path, index=False)
+    try:
+        cat_df.to_csv(categories_path, index=False)
+    except Exception as e:
+        return {"error": "Failed to save category", "details": str(e)}, 500
 
     # Step 6: Return updated category
     return {"id": int(cat_id), "name": new_name}, 200
 
 
+
 def delete_category(token, cat_id):
     user_id = extract_user_id(token)
 
-    CATEGORIES_PATH = os.path.join(STORAGE_DIR, "categories.csv")
-    META_PATH = os.path.join(STORAGE_DIR, META_FILE)
+    # File paths
+    meta_path = os.path.join(STORAGE_DIR, META_FILE)
+    categories_path = os.path.join(STORAGE_DIR, "categories.csv")
 
-    # Step 1: Load category data
-    if not os.path.exists(CATEGORIES_PATH):
-        return {"error": "No categories found"}, 500
-    cat_df = pd.read_csv(CATEGORIES_PATH)
+    # Step 1: Load metadata and categories
+    if not os.path.exists(meta_path) or not os.path.exists(categories_path):
+        return {"error": "Metadata or categories not found"}, 500
 
-    # Step 2: Ensure category exists
-    try:
-        cat_id = int(cat_id)
-    except ValueError:
-        return {"error": "Invalid category ID"}, 400
+    meta_df = pd.read_json(meta_path)
+    cat_df = pd.read_csv(categories_path)
 
-    category_row = cat_df[cat_df["id"] == cat_id]
-    if category_row.empty:
-        return {"error": "Category not found"}, 404
+    # Step 2: Get instance_id from user_id
+    user_instances = meta_df[meta_df["user_id"] == user_id]
+    if user_instances.empty:
+        return {"error": "No workspace found for user"}, 404
 
-    instance_id = category_row.iloc[0]["instance_id"]
+    # If user has multiple instances, you may need to modify this logic
+    instance_id = user_instances.iloc[0]["instance_id"]
 
-    # Step 3: Verify ownership
-    if not os.path.exists(META_PATH):
-        return {"error": "Metadata not found"}, 500
-    meta_df = pd.read_json(META_PATH)
-    workspace_row = meta_df[meta_df["instance_id"] == instance_id]
+    # Step 3: Find the category with matching id & instance
+    cat_row = cat_df[(cat_df["id"] == int(cat_id)) & (cat_df["instance_id"] == instance_id)]
+    if cat_row.empty:
+        return {"error": "Category not found in this workspace"}, 404
 
-    if workspace_row.empty or workspace_row.iloc[0]["user_id"] != user_id:
-        return {"error": "Forbidden"}, 403
-
-    # Step 4: Check at least one category remains after deletion
+    # Step 4: Ensure at least one category remains after deletion
     instance_categories = cat_df[cat_df["instance_id"] == instance_id]
     if len(instance_categories) <= 1:
-        return {"error": "Cannot delete last category"}, 400
+        return {"error": "At least one category must remain"}, 400
 
+    # Step 5: Update rows in instance CSV with category_id == cat_id → 0
+    instance_csv_path = os.path.join(STORAGE_DIR, f"instances/{instance_id}.csv")
+    if not os.path.exists(instance_csv_path):
+        return {"error": "Instance data file not found"}, 500
 
-    # PENDING
-    # Step 5: Update CSV file to replace deleted category with 0
-    # instance_csv_path = os.path.join(STORAGE_DIR, f"{instance_id}.csv")
-    # if os.path.exists(instance_csv_path):
-    #     df = pd.read_csv(instance_csv_path)
-    #     df["category_id"] = df["category_id"].apply(lambda x: 0 if x == cat_id else x)
-    #     df.to_csv(instance_csv_path, index=False)
+    try:
+        instance_df = pd.read_csv(instance_csv_path)
+        instance_df.loc[instance_df["category_id"] == int(cat_id), "category_id"] = 0
+        instance_df.to_csv(instance_csv_path, index=False)
+    except Exception as e:
+        return {"error": "Failed to update instance data", "details": str(e)}, 500
 
-    # Step 6: Remove category row
-    cat_df = cat_df[cat_df["id"] != cat_id]
-    cat_df.to_csv(CATEGORIES_PATH, index=False)
+    # Step 6: Remove category from categories.csv
+    cat_df = cat_df.drop(cat_row.index)
+    try:
+        cat_df.to_csv(categories_path, index=False)
+    except Exception as e:
+        return {"error": "Failed to save updated categories", "details": str(e)}, 500
 
-    # Step 7: Done
     return {"deleted": True}, 200
-

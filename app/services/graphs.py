@@ -7,12 +7,12 @@ def get_pie_chart_data(instance_id):
     """
     df = pd.read_csv(f"storage/instances/{instance_id}.csv")
 
-    data = category_totals(df)  # [{'category_id': 4, 'total': 1246.0}, ...]
+    data = category_totals(df,instance_id)  # [{'category_id': 4, 'total': 1246.0}, ...]
     return {
         "type": "pie",
         "data": [
             {
-                "label": f"Category {entry['category_id']}",
+                "label": f"Category {entry['category_name']}",
                 "value": entry["total"]
             }
             for entry in data

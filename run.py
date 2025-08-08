@@ -7,7 +7,7 @@ from app.routes.reports import report_bp
 from app.routes.insights import insights_bp
 from app.utils.save_reciept_image import save_receipt_image
 from app.utils.reciept_parser import reciept_parser
-
+from datetime import datetime,timezone
 
 app = Flask(__name__)
 
@@ -21,6 +21,13 @@ app.register_blueprint(insights_bp)
 @app.route("/")
 def runApp():
     return "APP running Successfully"
+
+@app.route('/v1/health',methods=['GET'])
+def check_health():
+    return {
+        "status": "ok",
+        "time": datetime.now(timezone.utc).isoformat()
+    }
 
 
 
