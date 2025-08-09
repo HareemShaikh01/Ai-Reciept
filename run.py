@@ -30,20 +30,18 @@ def check_health():
     }
 
 
+@app.route("/upload",methods=['GET',"POST"])
+def testing():
+    if request.method == "POST": 
+       file = request.files.get("reciept")
+       instance_id = request.form.get("instance_id")
 
-# testing image upload
-@app.route("/upload", methods=["GET", "POST"])
-def upload_receipt():
-    if request.method == "POST":
-        file = request.files.get("reciept")
-        if not file:
-            return "No file uploaded", 400
-        receipt_id, path = save_receipt_image(file)
-        img_url = path.split('\\')[1]
-        extracted =reciept_parser(img_url)
-        return jsonify({"receipt_id": receipt_id, "path": path,"json":extracted})
-    
+       resp = save_receipt_image(file)
+       return {"resp":resp},200
+        
     return render_template("upload.html")
+
+
 
 
 app.run(debug=True)

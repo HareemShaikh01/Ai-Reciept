@@ -4,7 +4,6 @@ from app.services.aggregators.items import top_items
 from app.services.aggregators.category import category_totals,category_overages
 from app.services.aggregators.summary import receipt_summary, daily_spend,weekly_spend,monthly_spend
 
-
 def instance_report(id, period="monthly", start_str=None, end_str=None):
     import pandas as pd
 
@@ -15,7 +14,17 @@ def instance_report(id, period="monthly", start_str=None, end_str=None):
     if df is None or df.empty:
         return {"error": "No data found"}, 404
 
-    df["date"] = pd.to_datetime(df["date"])
+    # Convert dates, coercing errors to NaT
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+    # Drop rows with invalid dates
+    invalid_count = df["date"].isna().sum()
+    if invalid_count > 0:
+        print(f"[instance_report] Dropped {invalid_count} rows with invalid dates")
+        df = df.dropna(subset=["date"])
+
+    if df.empty:
+        return {"error": "No valid dated data available"}, 404
 
     # Filter data by period
     if period == "custom" and start_str and end_str:
@@ -28,7 +37,6 @@ def instance_report(id, period="monthly", start_str=None, end_str=None):
     elif period == "monthly":
         start = df["date"].max() - pd.DateOffset(months=1)
         df = df[df["date"] >= start]
-    # else: use all data
 
     # Generate insights
     return {

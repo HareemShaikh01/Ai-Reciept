@@ -28,17 +28,12 @@ def build_system_message(report_data):
 def build_message_log(instance_id, user_message):
     history = chat_memory.get(instance_id, [])
     return history[-MEMORY_WINDOW:] + [{"role": "user", "content": user_message}]
-
-# Endpoint
-def handle_chat(id,message):
-
-    # Get instance report for context
+def handle_chat(id, message):
     try:
         report_data = instance_report(id)
     except Exception as e:
-        return jsonify({"error": "Failed to load instance report", "details": str(e)}), 500
+        return {"error": "Failed to load instance report", "details": str(e)}, 500
 
-    # Build conversation log
     messages = [build_system_message(report_data)] + build_message_log(id, message)
 
     try:
@@ -48,12 +43,11 @@ def handle_chat(id,message):
         )
         assistant_reply = response.choices[0].message.content.strip()
     except Exception as e:
-        return jsonify({"error": "LLM request failed", "details": str(e)}), 500
+        return {"error": "LLM request failed", "details": str(e)}, 500
 
-    # Update memory
     history = chat_memory.get(id, [])
     history.append({"role": "user", "content": message})
     history.append({"role": "assistant", "content": assistant_reply})
-    chat_memory[id] = history[-MEMORY_WINDOW:]  # Limit to last 5 messages
+    chat_memory[id] = history[-MEMORY_WINDOW:]
 
-    return {"response": assistant_reply}
+    return {"response": assistant_reply}, 200

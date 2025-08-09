@@ -11,45 +11,46 @@ import json
 RECIEPTS_PATH = "storage/receipts"
 RECIEPT_FILE = 'receipts.json'
 
-def upload_and_parse_reciept(token,instance_id, file):
-    # Step 1: Save uploaded image and generate receipt_id
+
+def upload_and_parse_reciept(token, instance_id, file):
+    # Step 1: Save uploaded image
     receipt_id, path = save_receipt_image(file)
     img_url = path.split('\\')[1]
 
     # Step 2: Parse the receipt
     extracted_json = reciept_parser(img_url, instance_id)
 
-    # Ensure receipt_id and instance_id are added
+    # Defensive checks in case parser fails
+    if not isinstance(extracted_json, dict):
+        extracted_json = {}
+
+    if "items" not in extracted_json or not isinstance(extracted_json["items"], list):
+        extracted_json["items"] = []
+
+    # Ensure IDs exist
     extracted_json["receipt_id"] = receipt_id
     extracted_json["instance_id"] = instance_id
 
-    # Step 2.5: Handle missing category_ids (i.e., new categories)
+    # Step 2.5: Handle new categories
     category_map = {}
-
-    # Collect all unique category names to be added
     for item in extracted_json["items"]:
         if "category_name" in item and not item.get("category_id"):
-            category_name = item["category_name"].strip()
-            category_map[category_name] = None  # Placeholder for returned ID
+            category_map[item["category_name"].strip()] = None
 
-    # Add categories via service and store their IDs
     for category_name in category_map.keys():
-        category_resp, status = add_category(token,instance_id, {"name": category_name})
+        category_resp, status = add_category(token, instance_id, {"name": category_name})
         if status == 200:
             category_map[category_name] = category_resp["id"]
         else:
             raise Exception(f"Failed to add category '{category_name}': {category_resp.get('error')}")
 
-    # Replace category_name with category_id using the map
     for item in extracted_json["items"]:
         if "category_name" in item and not item.get("category_id"):
-            category_name = item["category_name"].strip()
-            item["category_id"] = category_map[category_name]
+            item["category_id"] = category_map[item["category_name"].strip()]
             item.pop("category_name", None)
 
     # Step 3: Append to receipts.json
     receipts_json_path = os.path.join(RECIEPTS_PATH, RECIEPT_FILE)
-
     if os.path.exists(receipts_json_path):
         with open(receipts_json_path, 'r') as f:
             try:
@@ -60,7 +61,6 @@ def upload_and_parse_reciept(token,instance_id, file):
         receipt_data = []
 
     receipt_data.append(extracted_json)
-
     with open(receipts_json_path, 'w') as f:
         json.dump(receipt_data, f, indent=2)
 
@@ -68,21 +68,22 @@ def upload_and_parse_reciept(token,instance_id, file):
     instance_csv_path = f"storage/instances/{instance_id}.csv"
     os.makedirs(os.path.dirname(instance_csv_path), exist_ok=True)
 
-    csv_rows = []
-    for item in extracted_json["items"]:
-        csv_rows.append({
-            "date": extracted_json.get("date", ""),
-            "text": item["text"],
-            "amount": item["price"],
-            "category_id": item["category_id"],
-            "receipt_id": receipt_id
-        })
-
-    file_exists = os.path.exists(instance_csv_path)
-    df = pd.DataFrame(csv_rows)
-    df.to_csv(instance_csv_path, mode='a', header=not file_exists, index=False)
+    if extracted_json["items"]:
+        csv_rows = [
+            {
+                "date": extracted_json.get("date", ""),
+                "text": item["text"],
+                "amount": item["price"],
+                "category_id": item["category_id"],
+                "receipt_id": receipt_id
+            }
+            for item in extracted_json["items"]
+        ]
+        file_exists = os.path.exists(instance_csv_path)
+        pd.DataFrame(csv_rows).to_csv(instance_csv_path, mode='a', header=not file_exists, index=False)
 
     return {"receipt_id": receipt_id, "items": extracted_json['items']}
+
 
 
 
