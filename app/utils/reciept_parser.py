@@ -29,7 +29,6 @@ def get_categories(instance_id):
     df = df[df['instance_id'] == instance_id]
     return df.to_dict(orient='records')
 
-
 def reciept_parser(img_id, instance_id):
     categories = get_categories(instance_id)
     category_list = "\n".join([f"- {cat['id']}: {cat['name']}" for cat in categories])
@@ -37,7 +36,7 @@ def reciept_parser(img_id, instance_id):
     path = f"storage/receipts/uploads/{img_id}"
     base64_url = image_to_base64(path)
 
-    prompt = f"""
+    base_prompt = f"""
     Extract the following information from the image of a receipt:
     - A list of items with their text description, price, and either a matched category_id OR a new category_name if no match is found.
     - Vendor name (store/brand name).
@@ -49,6 +48,8 @@ def reciept_parser(img_id, instance_id):
 
     Match each item to the best possible category from this list using the most relevant name.
     If a match is not found, suggest a new category by returning a "category_name" instead of "category_id".
+    Never confuse total with subtotal → look for a printed 'Total' field and confirm by adding up prices. 
+    If mismatch, prefer the printed total.
 
     Return only a raw JSON object like this (no extra text or backticks):
     {{
@@ -62,23 +63,35 @@ def reciept_parser(img_id, instance_id):
     }}
     """
 
-    response = openai.chat.completions.create(
-        model='gpt-4o',
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": base64_url}}
-                ]
-            }
-        ]
-    )
+    def call_llm(prompt):
+        response = openai.chat.completions.create(
+            model='gpt-4o',
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": base64_url}}
+                    ]
+                }
+            ]
+        )
+        return response.choices[0].message.content
 
-    response_text = response.choices[0].message.content
+    # First attempt
+    response_text = call_llm(base_prompt)
     try:
         parsed = json.loads(response_text)
-        return parsed
     except json.JSONDecodeError:
-        print("Failed to parse JSON from model response")
-        return {"error": "Invalid response format"}
+        parsed = {}
+
+    # Retry if items missing or empty
+    if not parsed.get("items") or len(parsed.get("items", [])) < 1:
+        retry_prompt = base_prompt + "\n⚠️ Your last response returned no items. Try again and ensure all visible items are extracted."
+        response_text = call_llm(retry_prompt)
+        try:
+            parsed = json.loads(response_text)
+        except json.JSONDecodeError:
+            parsed = {"error": "Invalid response format"}
+
+    return parsed
