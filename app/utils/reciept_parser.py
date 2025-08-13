@@ -29,14 +29,26 @@ def get_categories(instance_id):
     df = df[df['instance_id'] == instance_id]
     return df.to_dict(orient='records')
 
+
 def reciept_parser(img_id, instance_id):
-    categories = get_categories(instance_id)
-    category_list = "\n".join([f"- {cat['id']}: {cat['name']}" for cat in categories])
+    try:
+        categories = get_categories(instance_id)
+        category_list = "\n".join([f"- {cat['id']}: {cat['name']}" for cat in categories])
 
-    path = f"storage/receipts/uploads/{img_id}"
-    base64_url = image_to_base64(path)
+        path = f"storage/receipts/uploads/{img_id}"
+        
+        # Check if image file exists
+        if not os.path.exists(path):
+            print(f"Error: Image file not found at {path}")
+            return {"error": f"Image file not found: {img_id}"}
+        
+        base64_url = image_to_base64(path)
+        
+    except Exception as e:
+        print(f"Error in image processing: {str(e)}")
+        return {"error": f"Image processing failed: {str(e)}"}
 
-    base_prompt = f"""
+    prompt = f"""
     Extract the following information from the image of a receipt:
     - A list of items with their text description, price, and either a matched category_id OR a new category_name if no match is found.
     - Vendor name (store/brand name).
@@ -63,7 +75,7 @@ def reciept_parser(img_id, instance_id):
     }}
     """
 
-    def call_llm(prompt):
+    try:
         response = openai.chat.completions.create(
             model='gpt-4o',
             messages=[
@@ -76,22 +88,47 @@ def reciept_parser(img_id, instance_id):
                 }
             ]
         )
-        return response.choices[0].message.content
 
-    # First attempt
-    response_text = call_llm(base_prompt)
-    try:
-        parsed = json.loads(response_text)
-    except json.JSONDecodeError:
-        parsed = {}
-
-    # Retry if items missing or empty
-    if not parsed.get("items") or len(parsed.get("items", [])) < 1:
-        retry_prompt = base_prompt + "\n⚠️ Your last response returned no items. Try again and ensure all visible items are extracted."
-        response_text = call_llm(retry_prompt)
+        response_text = response.choices[0].message.content
+        print(f"OpenAI Response: {response_text[:200]}...")  # Debug log
+        
+        # Clean up response text - remove markdown code blocks if present
+        cleaned_response = response_text.strip()
+        if cleaned_response.startswith('```json'):
+            cleaned_response = cleaned_response[7:]  # Remove ```json
+        elif cleaned_response.startswith('```'):
+            cleaned_response = cleaned_response[3:]   # Remove ```
+            
+        if cleaned_response.endswith('```'):
+            cleaned_response = cleaned_response[:-3]  # Remove trailing ```
+            
+        cleaned_response = cleaned_response.strip()
+        print(f"Cleaned Response: {cleaned_response[:200]}...")  # Debug log
+        
         try:
-            parsed = json.loads(response_text)
-        except json.JSONDecodeError:
-            parsed = {"error": "Invalid response format"}
-
-    return parsed
+            parsed = json.loads(cleaned_response)
+            
+            # Validate the response structure
+            if "items" not in parsed:
+                print("Warning: OpenAI response missing 'items' field")
+                return {"error": "AI response missing required 'items' field"}
+            
+            if not isinstance(parsed["items"], list):
+                print("Warning: OpenAI response 'items' is not a list")
+                return {"error": "AI response 'items' field is not a list"}
+            
+            if len(parsed["items"]) == 0:
+                print("Warning: OpenAI response contains no items")
+                return {"error": "No items found in receipt"}
+            
+            return parsed
+            
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse JSON from model response: {e}")
+            print(f"Raw response: {response_text}")
+            print(f"Cleaned response: {cleaned_response}")
+            return {"error": f"Invalid JSON response from AI model: {str(e)}"}
+            
+    except Exception as e:
+        print(f"OpenAI API error: {str(e)}")
+        return {"error": f"AI processing failed: {str(e)}"}
